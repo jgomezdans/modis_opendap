@@ -2,6 +2,12 @@ This repository contains a tool to download data from the all new MODIS OpenDAP 
 
 We use multiple threads to download in parallel. Note that if you abuse this, you might overwhelm the server and it might well kick you out or something. Beware of this...
 
+Also, you need the pydap library install. You can do this easily with pip:
+
+    pip install pydap
+
+I think I use 3.1.1 which appears to be the latest...
+
 If you have any questions, email the author on j.gomez-dans@ucl.ac.uk
 
 
