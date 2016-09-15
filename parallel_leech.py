@@ -34,6 +34,7 @@ from multiprocessing.dummy import Pool
 import datetime
 import sys
 import numpy as np
+import install_cas_client
 from pydap.client import open_url
 import optparse
 
@@ -54,9 +55,19 @@ def do_command_line ():
         type=int, default=2014, help="End year" )
     parser.add_option('-p', '--pool', action="store", dest="pool_size", \
         type=int, default=10, help="Number of simultaneous threads to use" )
+    parser.add_option('-P', '--password', action="store", dest="password", \
+        type=str, help="EarthData Login password" )
+    parser.add_option('-U', '--user', action="store", dest="user", \
+        type=str, help="EarthData Login username" )
 
     (options, args) = parser.parse_args()
-    return options.latitude, options.longitude, options.output_file, \
+    if 'user' not in options.__dict__:
+        parser.error("You need to provide a username! Sgrunt!")
+    if 'password' not in options.__dict__:
+        parser.error("You need to provide a password! Sgrunt!")
+
+    return options.user, options.password, options.latitude, \
+        options.longitude, options.output_file, \
         options.year_start, options.year_end, options.pool_size
 
 
@@ -130,7 +141,7 @@ def grab_slave ( inp, leech_query=50):
             ds[band][(i0+tstep*leech_query):(i0+tstep*leech_query+the_end), line, sample].squeeze()
     return ( band, x )
 
-def grab_refl_data_parallel ( lon, lat, year ):
+def grab_refl_data_parallel ( user, password, lon, lat, year, collection="006" ):
     """
     This function builds up a list of the required bands and
     time intervals required to download. The output of this
@@ -149,11 +160,12 @@ def grab_refl_data_parallel ( lon, lat, year ):
     bands_1k += [ "state_1km_1" ]
 
     map_struct = []
-    plat_list = [ "MOD09GA.005", "MYD09GA.005" ]
+    
+    plat_list = [ "MOD09GA.%s" % collection, "MYD09GA.%s" % collection ]
         
 
     for isens, prod in enumerate( plat_list ):
-        location = "http://opendap.cr.usgs.gov/opendap/" + \
+        location = "http://%s:%s@opendap.cr.usgs.gov/opendap/" % ( user, password) + \
                   "hyrax/%s/h%02dv%02d.ncml" % ( prod, htile, vtile ) 
         ds = open_url( location )
         time = ds['time'][:]
@@ -171,7 +183,7 @@ def grab_refl_data_parallel ( lon, lat, year ):
             map_struct.append ( [ location, band, i0,time, sample1k, line1k] )
     return map_struct
 
-def grab_refl_data ( lon, lat ):
+def grab_refl_data ( user, password, lon, lat ):
     """This is the old and sequential way of doing things. We've gone
     all parallel now..."""
     htile, vtile, line, sample = lonlat ( lon, lat, scale_factor=2. )
@@ -187,7 +199,7 @@ def grab_refl_data ( lon, lat ):
     retrieved_data = [{}, {}]
     for isens, prod in enumerate( [ "MOD09GA.005", "MYD09GA.005"] ):
         print "Doing product %s" % prod
-        ds = open_url("http://opendap.cr.usgs.gov/opendap/" + \
+        ds = open_url("http://%s:%s@opendap.cr.usgs.gov/opendap/" % ( user, password) +\
                 "hyrax/%s/h%02dv%02d.ncml" % ( prod, htile, vtile ) )
         print "\tGetting time..."
         sys.stdout.flush()
@@ -216,10 +228,12 @@ def grab_refl_data ( lon, lat ):
                     ds[band][tstep*100:(tstep+1)*100, sample1k, line1k].squeeze()
     return retrieved_data
 
-def grab_data ( year, longitude, latitude, output_file, pool_size ):
+def grab_data ( username, password, year, 
+               longitude, latitude, output_file, pool_size ):
         
     print "Downloading year %d..." % year
-    the_data = grab_refl_data_parallel ( longitude, latitude, year )
+    the_data = grab_refl_data_parallel ( username, password, 
+                                        longitude, latitude, year )
     
     pool = Pool( pool_size )
     results = pool.map( grab_slave, the_data)
@@ -266,7 +280,7 @@ def grab_data ( year, longitude, latitude, output_file, pool_size ):
     fp.close()
 
 if __name__ == "__main__":
-    latitude, longitude, output_file,year_start, year_end, \
+    user, password, latitude, longitude, output_file,year_start, year_end, \
         pool_size = do_command_line ()
     for year in xrange ( year_start, year_end + 1):
-        grab_data ( year, longitude, latitude, output_file, pool_size )
+        grab_data ( user, password, year, longitude, latitude, output_file, pool_size )
